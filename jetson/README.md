@@ -8,7 +8,7 @@ would run on the CPU).
 
 ```bash
 sudo jetson_clocks                      # run the clocks at max (resets on reboot)
-git clone https://github.com/AlexRHaigh/Hockey-Vision.git
+git clone https://github.com/ability-spec/Hockey-Vision.git
 cd Hockey-Vision
 sudo docker build -t hockey-vision jetson/
 ```
@@ -81,3 +81,4 @@ M = row[[f"h{r}{c}" for r in range(3) for c in range(3)]].to_numpy(float).reshap
 x, y, w = M @ [960, 700, 1]
 print(row.frame, x / w, y / w)   # rink feet of pixel (960, 700) in that frame
 ```
+

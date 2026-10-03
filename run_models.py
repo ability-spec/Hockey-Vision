@@ -84,23 +84,25 @@ def pick_device(requested):
     return "cpu"
 
 
-def model_path(name):
-    """The model's TensorRT engine if one has been exported, otherwise its .pt weights."""
+def model_path(name, device=None):
+    """TensorRT only for CUDA; CPU/MPS always use portable .pt weights."""
     engine = MODELS_DIR / f"{name}_model.engine"
-    return engine if engine.exists() else MODELS_DIR / f"{name}_model.pt"
+    selected = str(pick_device(device)).lower()
+    cuda = selected.startswith("cuda") or selected.isdecimal()
+    return engine if cuda and engine.exists() else MODELS_DIR / f"{name}_model.pt"
 
 
-def load_model(name):
-    path = model_path(name)
+def load_model(name, device=None):
+    path = model_path(name, device)
     if not path.exists():
         sys.exit(f"Model not found: {path}")
     return YOLO(str(path), task="detect")
 
 
-def load_models(names):
+def load_models(names, device=None):
     for name in names:
-        print(f"  {name}: {model_path(name).name}")
-    return {name: load_model(name) for name in names}
+        print(f"  {name}: {model_path(name, device).name}")
+    return {name: load_model(name, device) for name in names}
 
 
 def kept_classes(name, model):
@@ -371,8 +373,8 @@ def process_image(path, models, args, out_dir):
 def process_video(path, models, args, out_dir):
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
-        print(f"  Could not open {path}, skipping")
-        return
+        cap.release()
+        raise RuntimeError(f"Could not open video: {path}")
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -388,7 +390,7 @@ def process_video(path, models, args, out_dir):
 
     if "player" in models:
         # A fresh player model per video, so track ids (and the tracker's state) start over.
-        models = dict(models, player=load_model("player"))
+        models = dict(models, player=load_model("player", args.device))
     votes = JerseyVotes()
 
     all_detections = []
@@ -430,6 +432,8 @@ def process_video(path, models, args, out_dir):
             wr.release()
     print()
 
+    if not all_detections:
+        raise RuntimeError(f"No frames decoded from video: {path}")
     (out_dir / "detections.json").write_text(json.dumps(all_detections, indent=2))
 
 
@@ -473,7 +477,7 @@ def main():
         sys.exit(f"No images or videos found in {args.source}")
 
     print(f"Loading models: {', '.join(args.models)} (device: {args.device})")
-    models = load_models(args.models)
+    models = load_models(args.models, args.device)
 
     for path in inputs:
         out_dir = args.output / path.stem
@@ -490,3 +494,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
