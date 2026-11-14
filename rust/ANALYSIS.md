@@ -1,5 +1,11 @@
 # Rust for Hockey-Vision: analysis
 
+> **Update (Nov 2026):** phases 1 and 2 are done for the Mac, and export is ported too. Every
+> stage now runs in Rust (`hockey-vision run`), 4.5–5.3x faster end to end on an M5 with CoreML,
+> with the same outputs as Python (byte-identical tables and events; detections equal up to ONNX
+> Runtime float noise). See [README.md](README.md) for the measurements. TensorRT / Jetson support
+> (hv-infer with the TensorRT execution provider or engines) is still to do.
+
 What it would take to run Hockey-Vision in Rust, what it would gain, and in what order to do it.
 Every number here was measured for this report unless it is marked as an estimate. Section 7 has
 the commands to reproduce them.

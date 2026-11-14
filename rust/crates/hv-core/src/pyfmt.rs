@@ -35,6 +35,32 @@ pub fn py_float(v: f64) -> String {
     }
 }
 
+/// `py_float` appended to `out`, without an intermediate String for the common case.
+pub fn push_py_float(out: &mut String, v: f64) {
+    use std::fmt::Write;
+    let a = v.abs();
+    if v.is_finite() && v != 0.0 && (1e-4..1e16).contains(&a) {
+        let start = out.len();
+        write!(out, "{v}").unwrap();
+        if !out[start..].contains('.') {
+            out.push_str(".0");
+        }
+    } else {
+        out.push_str(&py_float(v));
+    }
+}
+
+/// `csv_field` appended to `out`.
+pub fn push_csv_field(out: &mut String, s: &str) {
+    if s.contains([',', '"', '\n', '\r']) {
+        out.push('"');
+        out.push_str(&s.replace('"', "\"\""));
+        out.push('"');
+    } else {
+        out.push_str(s);
+    }
+}
+
 /// A csv.writer field with QUOTE_MINIMAL.
 pub fn csv_field(s: &str) -> String {
     if s.contains([',', '"', '\n', '\r']) {

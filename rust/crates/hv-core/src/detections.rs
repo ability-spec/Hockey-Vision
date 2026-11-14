@@ -20,6 +20,9 @@ pub struct Detection {
     pub jersey_number: Option<String>,
     #[serde(default)]
     pub player_name: Option<String>,
+    /// The player's team abbreviation (run_models.py --teams).
+    #[serde(default)]
+    pub team: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -1,0 +1,17 @@
+[package]
+name = "hv-infer"
+description = "run_models.py in Rust: decoding, the YOLO models through ONNX Runtime, tracking and jersey numbers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version = "1.81"
+
+[features]
+default = []
+# Apple's CoreML execution provider (GPU / Neural Engine) for ONNX Runtime.
+coreml = ["ort/coreml"]
+
+[dependencies]
+hv-core.workspace = true
+ort = { version = "=2.0.0-rc.10", default-features = false, features = ["std", "download-binaries", "copy-dylibs"] }

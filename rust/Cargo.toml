@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/hv-core", "crates/hv-cli"]
+members = ["crates/hv-core", "crates/hv-infer", "crates/hv-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +11,7 @@ rust-version = "1.77"
 
 [workspace.dependencies]
 hv-core = { path = "crates/hv-core" }
+hv-infer = { path = "crates/hv-infer" }
 nalgebra = "0.33"
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }

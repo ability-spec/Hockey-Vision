@@ -13,4 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 hv-core.workspace = true
+hv-infer.workspace = true
 rayon.workspace = true
+
+[features]
+coreml = ["hv-infer/coreml"]
