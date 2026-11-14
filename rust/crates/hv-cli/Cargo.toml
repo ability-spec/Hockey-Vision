@@ -1,0 +1,20 @@
+[package]
+name = "hv-cli"
+description = "Command-line front end for the Rust port of Hockey-Vision"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "hockey-vision"
+path = "src/main.rs"
+
+[dependencies]
+hv-core.workspace = true
+hv-infer.workspace = true
+rayon.workspace = true
+
+[features]
+coreml = ["hv-infer/coreml"]

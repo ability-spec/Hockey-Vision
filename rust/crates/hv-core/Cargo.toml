@@ -1,0 +1,14 @@
+[package]
+name = "hv-core"
+description = "Hockey-Vision's per-frame CPU work in Rust: rink geometry, homography fitting, jersey votes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nalgebra.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true

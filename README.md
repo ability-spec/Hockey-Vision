@@ -198,6 +198,7 @@ reach the server shares the favourites and playlists.
 | `CV_Models/` | The models (see [CV_Models/README.md](CV_Models/README.md)) |
 | `assets/` | The rink template image (for the optional videos) |
 | `tests/` | Tests |
+| `rust/` | The whole pipeline in Rust (`hockey-vision run`, ~5x faster on a Mac) and the analysis behind it: [rust/README.md](rust/README.md), [rust/ANALYSIS.md](rust/ANALYSIS.md) |
 
 ## Jersey numbers
 
