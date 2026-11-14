@@ -19,6 +19,11 @@ def read(path):
     return STAMP.sub('"generated_at": "-"', path.read_text())
 
 
+def differing_files(a, b):
+    """Names of the export files that differ between folders a and b (timestamps ignored)."""
+    return [name for name in FILES if read(Path(a) / name) != read(Path(b) / name)]
+
+
 def main():
     a, b = Path(sys.argv[1]), Path(sys.argv[2])
     bad = 0

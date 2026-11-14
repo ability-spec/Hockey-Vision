@@ -18,8 +18,9 @@ sys.path.insert(0, str(ROOT))
 from video_io import CutDetector  # noqa: E402
 
 
-def main():
-    video, n = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 4
+def check(video, n=4):
+    """{"decode", "resize", "crops": values differing from OpenCV, "values": total compared,
+    "hist": largest histogram difference}."""
     cap = cv2.VideoCapture(video)
     frames = [cap.read()[1] for _ in range(n)]
     h, w = frames[0].shape[:2]
@@ -41,11 +42,12 @@ def main():
     exe = ROOT / "rust" / "target" / "release" / "examples" / "check_pixels"
     subprocess.run([str(exe), str(tmp / "f.yuv"), str(w), str(h), str(n), str(tmp / "crops.txt"), str(tmp)], check=True)
 
+    out = {}
     bgr = np.frombuffer((tmp / "bgr.raw").read_bytes(), np.uint8).reshape(n, h, w, 3)
-    print(f"decode:            {sum(int((bgr[k] != frames[k]).sum()) for k in range(n))} values differ of {bgr.size}")
+    out["decode"] = sum(int((bgr[k] != frames[k]).sum()) for k in range(n))
     small = np.frombuffer((tmp / "small.raw").read_bytes(), np.uint8).reshape(n, 360, 640, 3)
     ref = [cv2.resize(f, (640, 360), interpolation=cv2.INTER_LINEAR) for f in frames]
-    print(f"resize 1/3:        {sum(int((small[k] != ref[k]).sum()) for k in range(n))} values differ of {small.size}")
+    out["resize"] = sum(int((small[k] != ref[k]).sum()) for k in range(n))
     data, off, bad, tot = (tmp / "crops.raw").read_bytes(), 0, 0, 0
     for f, x1, y1, x2, y2, dw, dh in crops:
         mine = np.frombuffer(data[off:off + dw * dh * 3], np.uint8).reshape(dh, dw, 3)
@@ -53,14 +55,23 @@ def main():
         theirs = cv2.resize(np.ascontiguousarray(frames[f][y1:y2, x1:x2]), (dw, dh), interpolation=cv2.INTER_LINEAR)
         bad += int((mine != theirs).sum())
         tot += mine.size
-    print(f"resize crops:      {bad} values differ of {tot} ({len(crops)} crops)")
+    out["crops"], out["values"] = bad, tot + bgr.size + small.size
     hists = np.frombuffer((tmp / "hists.raw").read_bytes(), np.float32).reshape(n, 32, 32)
     det = CutDetector()
     worst = 0.0
     for k in range(n):
         det.update(frames[k])
         worst = max(worst, float(np.abs(det.prev - hists[k]).max()))
-    print(f"cut histograms:    max difference {worst:.3g} (values are 0..1)")
+    out["hist"] = worst
+    return out
+
+
+def main():
+    r = check(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 4)
+    print(f"decode:            {r['decode']} values differ")
+    print(f"resize 1/3:        {r['resize']} values differ")
+    print(f"resize crops:      {r['crops']} values differ (300 crops)")
+    print(f"cut histograms:    max difference {r['hist']:.3g} (values are 0..1)")
 
 
 if __name__ == "__main__":

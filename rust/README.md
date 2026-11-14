@@ -114,6 +114,29 @@ fixed-shape session for the shapes it sees every frame (the 640x384 frame, a 640
 anything else falls back to the CPU session. Overlapping doesn't change the output (checked byte
 for byte).
 
+## Tests
+
+```bash
+(cd rust && cargo test --release)                                   # Rust unit tests
+python -m unittest discover -s tests -p "test_rust_port.py" -v      # Rust vs the Python pipeline (~70 s)
+```
+
+`tests/test_rust_port.py` builds the binary and checks each Rust component against the Python code
+it replaces:
+
+| Exact (bit for bit) | Within tolerance |
+|---|---|
+| export_data.py on synthetic games, several clips, no positions | rink fit vs homography.py (fit on all but <6% of frames, median position difference < 0.0001 ft) |
+| Ultralytics NMS + box scaling, 30 random cases | detection vs run_models.py on the same ONNX models (≥80% identical records; every box matched within 0.5 px; same track ids, numbers, cuts) |
+| Ultralytics BYTETracker, 4 x 200 frames of crossing, vanishing players | |
+| assemble_number, JerseyVotes, roster.py | |
+| CPython's hypot / divmod (100k values) | |
+| OpenCV decoding, resizes, cut histograms (generated video) | |
+| overlapped vs sequential detection; `run`'s export vs export_data.py | |
+
+The detection tests are skipped without the ONNX models (`python rust/export_onnx.py`) and a video
+(`HV_TEST_VIDEO`, default outputs/speedup_test/clips/window1_02m48s.mp4).
+
 ## Parity and timing scripts
 
 | Script | Does |
