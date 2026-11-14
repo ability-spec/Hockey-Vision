@@ -446,7 +446,9 @@ def _fit(matches):
     img = np.float32([m.image_xy for m in matches])
     ft = np.float32([m.rink_xy for m in matches])
     H, _ = cv2.findHomography(img, ft, 0)
-    if H is None:
+    # A singular fit is no fit: it can't be inverted (_refine_circle_edges, _resolve_lines would
+    # raise and end the whole clip). The Rust port applies the same rule.
+    if H is None or abs(np.linalg.det(H)) < 1e-12:
         return None, None
     err = np.linalg.norm(cv2.perspectiveTransform(img.reshape(-1, 1, 2), H).reshape(-1, 2) - ft, axis=1)
     return H, err

@@ -13,7 +13,7 @@ Training, `export_engines.py`, `fetch_roster.py` and the web app stay in Python.
 | Detection, tracking, numbers, cuts | `run_models.py`, `video_io.py`, `roster.py` | `hockey-vision detect` | **4.5x faster** with CoreML (50–54 vs 235 ms/frame); same output as Python's own ONNX run up to model float noise |
 | Rink fit | `homography.py` | `hockey-vision homography` | ~20x faster on one core, ~90x on all; same fit on 96–100% of frames (see below) |
 | Tables, events, report | `export_data.py`, `events.py` | `hockey-vision export` | 10–15x faster; **byte-identical** output |
-| Whole pipeline | `jetson/run_clip.sh` | `hockey-vision run` | 27–32 s vs ~143 s per clip (**4.5–5.3x**) |
+| Whole pipeline | `jetson/run_clip.sh` | `hockey-vision run` | 37 s vs 178 s back to back (**4.8x**); 22–32 s on a quieter machine (up to 7x) |
 
 ```
 rust/
@@ -90,9 +90,13 @@ outputs agree on only ~46% of values (up to 7e-4 apart). CoreML against Python's
 (`.pt` on the GPU) is just as close (94–96% identical records, 100% track ids and numbers), the
 same spread as Python's own ONNX run vs its `.pt` run.
 
-**Rink fit** (`bench/compare_positions.py`): on these clips 0–2 frames in 600 get a fit on one side
-only. Most differ because the Rust fit reproduces OpenCV 5's solver and this Mac's Python has
-OpenCV 4.11 (`pip install -U opencv-python` brings Python to OpenCV 5); see ANALYSIS.md section 6.
+**Rink fit** (`bench/compare_positions.py`): the Rust fit reproduces OpenCV 5's solver. Against
+`homography.py` on OpenCV 5, with the same detections: clips 20:48 and 47:04 match to 0.01 ft on
+every frame; 02:48 differs on 1 frame of 600 (max 0.69 ft elsewhere); a synthetic 3,000-frame clip
+on 0.2% of frames. Against OpenCV 4.11 (this repo's venv) it is 0–2 frames per clip, up to 27 ft.
+The venv can't move to OpenCV 5 yet: it needs numpy 2, and Ultralytics on macOS excludes numpy
+2.0–2.3.4, which is all Python 3.9 can install. A separate venv with only opencv-python 5 runs
+homography.py for comparisons.
 
 ## Speed (Apple M5, 600-frame 1080p60 clips)
 

@@ -258,11 +258,12 @@ implementations, to find where they first part ways.
 
 ## 8. Found along the way
 
-- `homography.py` crashes with `LinAlgError: Singular matrix` when `cv2.findHomography` returns
-  a singular H during the line-diagonal search. It loses the whole clip's output, because
-  `positions.json` is only written at the end. The fix is a determinant check in `_fit()`,
-  filed as a separate task.
-- In either language, the 2^n line-diagonal search is most of `homography.py`'s cost. Pruning it
+- `homography.py` crashed with `LinAlgError: Singular matrix` when `cv2.findHomography` returned
+  a singular H during the line-diagonal search, losing the whole clip's output. Fixed: `_fit()`
+  now treats a singular fit as no fit, as the Rust port does (real clips' outputs unchanged).
+- (Measured later on the real clips: the diagonal search is only 17% of the rink fit's time,
+  which is ~1 ms/frame in Python and ~0.1 ms in Rust, so pruning it isn't worth changing the fits.)
+  In either language, the 2^n line-diagonal search is most of `homography.py`'s cost on the synthetic clips. Pruning it
   (for example, fitting each line's diagonal on its own against the point fit, or stopping once
   a combination has a low error) would speed up Python and Rust alike.
 - Number-crop preprocessing is the largest Python cost in `run_models.py`. Even without Rust,

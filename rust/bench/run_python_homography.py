@@ -1,5 +1,7 @@
 """Run homography.py's main() with one guard added: a singular fit counts as no fit.
 
+homography.py has this guard itself now; this wrapper is kept for running older checkouts.
+
 cv2.findHomography can return a singular matrix while compute_homography() tries line diagonals,
 and _refine_circle_edges() then raises numpy's "Singular matrix", ending the run. The Rust port
 (rust/crates/hv-core/src/homography.rs, fit()) treats such a fit as no fit; this applies the same
