@@ -1,14 +1,15 @@
-//! `hockey-vision`: command-line front end for the Rust port (see rust/README.md).
+//! `hockey-vision`: the Hockey-Vision pipeline's command line (see rust/README.md).
 //!
 //!     hockey-vision homography outputs/<clip>/detections.json --frame-size 1920x1080
 //!     hockey-vision export outputs/<clip> [more clips...] [--output DIR]
-//!     hockey-vision detect videos/<clip>.mp4 [--teams SJS MTL] [run_models.py options]
+//!     hockey-vision detect videos/<clip>.mp4 [--teams SJS MTL] [options]
 //!     hockey-vision run videos/<clip>.mp4 [--teams SJS MTL] [detect options]
 //!
-//! `run` is jetson/run_clip.sh in one program: detect, then the rink fit, then the export, writing
+//! `run` is the whole pipeline in one program: detect, then the rink fit, then the export, writing
 //! outputs/<clip>/detections.json, positions.*, homographies.csv and export/.
 //!
-//! Each command reads and writes the same files as the Python stage it replaces:
+//! Each command reads and writes the same files as the Python stage it replaces (on the
+//! Python-Implementation branch):
 //! `detect` = run_models.py (videos, without --save-video), `homography` = homography.py
 //! (without --save-video), `export` = export_data.py.
 
@@ -243,7 +244,7 @@ fn parse_detect(args: Vec<String>) -> Result<(Vec<PathBuf>, Config, bool), Error
     } else if is_video(&source) {
         vec![source]
     } else {
-        return Err(Error::Failed(format!("{}: only videos are supported (use run_models.py for images)", source.display())));
+        return Err(Error::Failed(format!("{}: only videos are supported (use the Python-Implementation branch's run_models.py for images)", source.display())));
     };
     if inputs.is_empty() {
         return Err(Error::Failed("No videos found".into()));

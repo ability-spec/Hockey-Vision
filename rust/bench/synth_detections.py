@@ -7,10 +7,11 @@ run_models.py writes. No models, weights or real video are needed, so homography
 port can be timed and compared on exactly the same input.
 
     python rust/bench/synth_detections.py out_dir --frames 9000          # 5 minutes at 30 fps
-    python homography.py out_dir/detections.json out_dir/placeholder.mp4
+    rust/target/release/hockey-vision homography out_dir/detections.json --frame-size 1280x720 --time
 
-Only numpy is needed to write detections.json; the placeholder video (which homography.py opens
-to read the frame size) needs OpenCV.
+Only numpy is needed to write detections.json. The placeholder video is for the Python
+homography.py (Python-Implementation branch), which opens it for the frame size, and needs OpenCV
+(--no-video skips it).
 """
 
 import argparse

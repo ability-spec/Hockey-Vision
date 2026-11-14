@@ -1,5 +1,5 @@
 //! 8-bit BGR images and the OpenCV / FFmpeg pixel operations run_models.py depends on, reproduced
-//! bit for bit (each checked against cv2 on real frames, see rust/bench/check_pixels.py):
+//! bit for bit (each checked against cv2 on real frames):
 //!
 //! - `YuvToBgr`: libswscale's C yuv420p -> bgr24 converter, as OpenCV's FFmpeg backend decodes
 //!   (BT.601 coefficients whatever the stream says, limited range, chroma shared per 2x2 block).

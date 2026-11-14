@@ -2,9 +2,10 @@
 
 The whole video-to-report pipeline in Rust, one stage per command and all of them in one
 (`hockey-vision run`). [ANALYSIS.md](ANALYSIS.md) has the original analysis and plan. The Python
-pipeline in the repo root is unchanged and stays the reference: each Rust stage reads and writes
-the same files as the Python stage it replaces, so they can be swapped and compared one at a time.
-Training, `export_engines.py`, `fetch_roster.py` and the web app stay in Python.
+pipeline it was ported from is on the `Python-Implementation` branch. Each Rust stage reads and
+writes the same files as the Python stage it replaces, so outputs from the two can be compared
+with the scripts in `bench/`. Training, the TensorRT engines and the Jetson setup are only on that
+branch. `fetch_roster.py` and the web app are in Python on both branches.
 
 ## What's here
 
@@ -30,7 +31,7 @@ rust/
 ├── crates/hv-infer/     ONNX Runtime models, ffmpeg frame reader, the detect loop
 ├── crates/hv-cli/       the `hockey-vision` binary
 ├── export_onnx.py       exports the five models to CV_Models/Models/onnx/
-└── bench/               parity and timing scripts against the Python pipeline
+└── bench/               compare two runs' outputs; synthetic test clips
 ```
 
 ## Setup
@@ -63,14 +64,18 @@ plus `--device cpu|coreml`, `--threads N` (default: performance cores), `--model
 `--sequential` (no overlapping; same output) and `--time` (per-stage timings).
 
 Not ported: images (only videos), `--width`, `--save-video` / `--per-model` / `--debug` videos, and
-TensorRT engines. Use the Python scripts for those.
+TensorRT engines. Use the `Python-Implementation` branch for those.
 
 ## How close it is to Python
+
+Measured against the `Python-Implementation` branch before the split; the scripts named here that
+needed both pipelines side by side (`check_pixels.py`, `check_pymath`, `run_parity.sh`,
+`tests/test_rust_port.py`) are in the git history at commit 69d0807.
 
 **Export** (`bench/compare_exports.py`): byte-identical on the three real clips, a multi-clip export
 and three synthetic 30,000-frame games (`bench/synth_game.py`: 1,469 events, ~1.1M table rows).
 This needs CPython 3.9's exact `round`, `math.hypot` and float formatting, which `pyval.rs`
-reproduces (checked bit for bit on 1M values by `cargo run --example check_pymath`). Python 3.10+
+reproduces (checked bit for bit on 1M values by `check_pymath`). Python 3.10+
 changed `math.hypot`'s last-bit rounding, so against a 3.10 Python a distance can differ in the
 last digit.
 
@@ -117,35 +122,17 @@ for byte).
 ## Tests
 
 ```bash
-(cd rust && cargo test --release)                                   # Rust unit tests
-python -m unittest discover -s tests -p "test_rust_port.py" -v      # Rust vs the Python pipeline (~70 s)
+(cd rust && cargo test --release)
 ```
 
-`tests/test_rust_port.py` builds the binary and checks each Rust component against the Python code
-it replaces:
-
-| Exact (bit for bit) | Within tolerance |
-|---|---|
-| export_data.py on synthetic games, several clips, no positions | rink fit vs homography.py (fit on all but <6% of frames, median position difference < 0.0001 ft) |
-| Ultralytics NMS + box scaling, 30 random cases | detection vs run_models.py on the same ONNX models (≥80% identical records; every box matched within 0.5 px; same track ids, numbers, cuts) |
-| Ultralytics BYTETracker, 4 x 200 frames of crossing, vanishing players | |
-| assemble_number, JerseyVotes, roster.py | |
-| CPython's hypot / divmod (100k values) | |
-| OpenCV decoding, resizes, cut histograms (generated video) | |
-| overlapped vs sequential detection; `run`'s export vs export_data.py | |
-
-The detection tests are skipped without the ONNX models (`python rust/export_onnx.py`) and a video
-(`HV_TEST_VIDEO`, default outputs/speedup_test/clips/window1_02m48s.mp4).
-
-## Parity and timing scripts
+## Scripts
 
 | Script | Does |
 |---|---|
 | `bench/compare_detections.py` | detections.json vs detections.json: matched boxes, track ids, numbers, cuts |
 | `bench/compare_positions.py` | positions.json vs positions.json |
 | `bench/compare_exports.py` | export folder vs export folder, byte for byte |
-| `bench/check_pixels.py` | Rust decoding / resizing / histograms vs OpenCV on real frames |
 | `bench/synth_game.py` | synthetic detections + positions with thousands of events |
-| `bench/synth_detections.py`, `run_parity.sh`, `run_python_homography.py` | rink-fit parity and timing |
-| `bench/gen_columns.sh` | regenerates `columns.rs` from export_data.py |
+| `bench/synth_detections.py` | a synthetic detections.json from a moving broadcast camera, for timing the rink fit |
 | `cargo run --release --example bench_model` | time one ONNX model on CPU or CoreML |
+| `cargo run --release --example debug_frame` / `dump_fits` | what the rink fit does on one frame / each frame's fit |

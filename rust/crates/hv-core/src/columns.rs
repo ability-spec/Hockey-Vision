@@ -1,6 +1,5 @@
 //! export_data.py's COLUMNS: every table's columns and their descriptions (metadata.json).
-//! Generated from export_data.py; regenerate when that changes:
-//!     rust/bench/gen_columns.sh > rust/crates/hv-core/src/columns.rs
+//! Generated from export_data.py (Python-Implementation branch); keep the two in step.
 
 pub const COLUMNS: &[(&str, &[(&str, &str)])] = &[
     ("players.csv", &[

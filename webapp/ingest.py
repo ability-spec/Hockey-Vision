@@ -1,11 +1,11 @@
-"""Import export_data.py outputs into the web app's database, one game per export folder.
+"""Import `hockey-vision export` outputs into the web app's database, one game per export folder.
 
     python -m webapp.ingest outputs/<clip>/export
     python -m webapp.ingest outputs/<clip>/export --roster rosters/2026-03-03_MTL_at_SJS.csv
     python -m webapp.ingest outputs/<clip>/export --date 2026-03-03 --away MTL --home SJS --game-id 2025020969
 
 Players are matched to NHL player ids by team and jersey number (the name breaks ties), so the clip
-must have been run with run_models.py --teams. With --roster (the fetch_roster.py --game file the
+must have been run with --teams (hockey-vision run / detect). With --roster (the fetch_roster.py --game file the
 clip was run with) the game's date and teams come from it and players are matched against exactly
 who dressed; otherwise against the active rosters. Importing the same folder again replaces it.
 The game's NHL game id is looked up from its date and teams (or given with --game-id), and its
@@ -118,7 +118,7 @@ def import_export(con, export_dir, date=None, away=None, home=None, label=None, 
     export_dir = Path(export_dir)
     stats_csv = export_dir / "player_stats.csv"
     if not stats_csv.exists():
-        sys.exit(f"No player_stats.csv in {export_dir} (run export_data.py first)")
+        sys.exit(f"No player_stats.csv in {export_dir} (run hockey-vision export first)")
     roster_rows = None
     if roster:
         roster_rows = db.load_roster(con, roster)
@@ -128,13 +128,13 @@ def import_export(con, export_dir, date=None, away=None, home=None, label=None, 
         date = date or (roster_rows[0]["as_of"] if roster_rows else None)
     rows = read_player_stats(stats_csv)
     if not any(r.get("team_abbrev") for r in rows):
-        sys.exit(f"{stats_csv} has no team abbreviations: run run_models.py with --teams so players can be named")
+        sys.exit(f"{stats_csv} has no team abbreviations: run hockey-vision with --teams so players can be named")
     return import_game(con, rows, str(export_dir.resolve()), date or Date.today().isoformat(), away, home, label,
                        nhl_game_id, roster_rows=roster_rows)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Import export_data.py outputs into the Hockey-Vision web app.")
+    parser = argparse.ArgumentParser(description="Import hockey-vision export outputs into the Hockey-Vision web app.")
     parser.add_argument("exports", type=Path, nargs="+", help="Export folders (outputs/<clip>/export)")
     parser.add_argument("--db", type=Path, default=db.DEFAULT_DB, help="Database file (default: %(default)s)")
     parser.add_argument("--roster", type=Path, help="The game's roster CSV from fetch_roster.py --game")
