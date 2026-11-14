@@ -1,7 +1,7 @@
 """Hockey-Vision scores: how well a player played in one game (0-100), their form over recent games,
 whether a pool should keep or trade them, and how strong a pool is overall.
 
-Everything here is a pure function of a player's player_stats.csv row (export_data.py, the video)
+Everything here is a pure function of a player's player_stats.csv row (hockey-vision export, the video)
 and their official box score line (nhl.py), so the rules can be read and tuned in one place.
 
 Game score

@@ -1,5 +1,5 @@
 """The web app's SQLite database: every NHL player (from the roster CSVs), the games imported from
-export_data.py outputs with each player's stats, favourites and playlists.
+`hockey-vision export` outputs with each player's stats, favourites and playlists.
 
     players          one row per NHL player, keyed by the NHL's player_id
     games            one row per imported game (an export folder)

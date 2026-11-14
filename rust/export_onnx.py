@@ -6,15 +6,20 @@ Dynamic shapes, FP32, with Ultralytics' metadata (class names, stride), which ho
 The Rust code pins the shapes itself where that is faster (CoreML).
 """
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from ultralytics import YOLO  # noqa: E402
+from ultralytics import YOLO
 
-from run_models import MODEL_FILES, MODELS_DIR, NUMBER_BATCH  # noqa: E402
+MODELS_DIR = Path(__file__).resolve().parents[1] / "CV_Models" / "Models"
+MODEL_FILES = {
+    "player": "new_player_model",
+    "puck": "new_nano_puck",
+    "dots": "new_dots",
+    "rink": "new_rink_model",
+    "number": "new_nums",
+}
+NUMBER_BATCH = 16  # the number model reads player crops in batches of this size
 
 OUT = MODELS_DIR / "onnx"
 OUT.mkdir(parents=True, exist_ok=True)

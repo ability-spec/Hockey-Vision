@@ -1,5 +1,5 @@
 """Fetch NHL rosters (jersey numbers and names) from the NHL's public API (api-web.nhle.com) for
-run_models.py's --teams / --roster, which limit jersey readings to the two teams' numbers and
+hockey-vision's --teams / --roster (run / detect), which limit jersey readings to the two teams' numbers and
 name the players.
 
     python fetch_roster.py                          # every team's active roster

@@ -6,7 +6,7 @@
 //! Python's float32 arrays are reproduced by rounding to `f32` where numpy would ([`f32r`]).
 //!
 //! One deliberate difference: a fit whose matrix is singular counts as no fit ([`fit`]). In Python
-//! `np.linalg.inv` raises on it and ends the run (see `rust/bench/run_python_homography.py`).
+//! `np.linalg.inv` raises on it and ends the run.
 
 use std::sync::OnceLock;
 

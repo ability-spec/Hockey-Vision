@@ -8,8 +8,15 @@ turnovers and defensive plays. The output is machine-readable data: per-frame an
 tables, an event list with times, and a `game_report.json` written for a language model to read
 and turn into feedback.
 
-It runs on a Mac or a CUDA GPU, and on an NVIDIA Jetson Orin Nano with TensorRT engines (see
-[jetson/README.md](jetson/README.md)).
+The pipeline is one Rust program, `hockey-vision`. On an Apple M5 it runs a 600-frame 1080p60 clip
+in about 37 s, against 178 s for the original Python pipeline (about 5x faster). The
+exports are byte-identical. [rust/README.md](rust/README.md) has the details and the
+measurements.
+
+> The original Python pipeline (`run_models.py`, `homography.py`, `export_data.py`) is on the
+> [`Python-Implementation`](../../tree/Python-Implementation) branch. That branch also has what
+> the Rust pipeline doesn't do: images, `--width`, the annotated videos, training, and the Jetson /
+> TensorRT setup.
 
 ## Design
 
@@ -17,7 +24,7 @@ It runs on a Mac or a CUDA GPU, and on an NVIDIA Jetson Orin Nano with TensorRT 
 broadcast video
       │
       ▼
-run_models.py ── five YOLO models per frame ──────────────► outputs/<clip>/detections.json
+hockey-vision detect ── five YOLO models per frame (ONNX Runtime) ─► outputs/<clip>/detections.json
       │   player  players, goalies (team a / b), referees; tracked across frames (ByteTrack)
       │   puck    the puck
       │   number  jersey digits on each player's box, voted per track → jersey number
@@ -25,65 +32,76 @@ run_models.py ── five YOLO models per frame ──────────�
       │   dots    the faceoff dots on the ice
       │   (+ optional --teams roster: limits numbers to each team's and names the players)
       ▼
-homography.py ── rink + dots keypoints → per-frame homography → rink feet ─► positions.json/.csv
-      │   matched to named landmarks in rink.py, outliers dropped, smoothed over time
+hockey-vision homography ── rink + dots keypoints → per-frame homography → rink feet
+      │   matched to named rink landmarks, outliers dropped,     ─► positions.json/.csv,
+      │   smoothed over time                                        homographies.csv
       ▼
-export_data.py ── tables + play events (events.py) ──────► outputs/<clip>/export/
-                   possessions, shots, passes, turnovers,    *.csv, game_report.json
-                   defensive plays, per-player stats
+hockey-vision export ── tables + play events ─────────────► outputs/<clip>/export/
+                        possessions, shots, passes, turnovers,   *.csv, game_report.json
+                        defensive plays, per-player stats
 ```
 
-1. **Detection and tracking** (`run_models.py`): the player model's boxes are tracked across
-   frames, so each player keeps an id. The number model reads digits on each player's torso,
-   and every frame's reading votes for that track's number, so the number holds through frames
-   where it can't be read. With `--teams`, a roster from `fetch_roster.py` restricts the numbers
-   to those each team wears and names the players (`roster.py`).
-2. **Rink mapping** (`homography.py`, `rink.py`): the rink and dots models' keypoints are matched
-   to known rink landmarks, and a homography from image pixels to rink feet is fitted for each
-   frame. Players are placed where their skates meet the ice. Rink coordinates are feet from the
-   centre dot: x along the rink (-100 to 100), y across it (-42.5 to 42.5).
-3. **Export and play events** (`export_data.py`, `events.py`): one or more clips' outputs become
-   tables, play events and per-player stats (see [Output](#output)). Events are found from the
-   rink positions alone, in the 2D rink plane.
+`hockey-vision run` does all three in one go.
+
+1. **Detection and tracking** (`detect`): the player model's boxes are tracked across frames, so
+   each player keeps an id. The number model reads digits on each player's torso, and every
+   frame's reading votes for that track's number, so the number holds through frames where it
+   can't be read. With `--teams`, a roster from `fetch_roster.py` restricts the numbers to those
+   each team wears and names the players.
+2. **Rink mapping** (`homography`): the rink and dots models' keypoints are matched to known rink
+   landmarks, and a homography from image pixels to rink feet is fitted for each frame. Players
+   are placed where their skates meet the ice. Rink coordinates are feet from the centre dot: x
+   along the rink (-100 to 100), y across it (-42.5 to 42.5).
+3. **Export and play events** (`export`): one or more clips' outputs become tables, play events
+   and per-player stats (see [Output](#output)). Events are found from the rink positions alone,
+   in the 2D rink plane.
 
 ## Models
 
-The five YOLO models aren't in git; they're on Hugging Face at
+The five YOLO models aren't in git. They're on Hugging Face at
 [AlexRHaigh/Hockey-Vision](https://huggingface.co/AlexRHaigh/Hockey-Vision) and go in
 `CV_Models/Models/`. **[CV_Models/README.md](CV_Models/README.md) lists each model, what it
-detects and how to download them.**
+detects and how to download them.** `hockey-vision` reads them as ONNX, which
+`rust/export_onnx.py` makes once from the `.pt` files.
 
 ## Setup
 
+Needs Rust 1.81 or newer ([rustup.rs](https://rustup.rs)), `ffmpeg` / `ffprobe` on the PATH, and
+Python with Ultralytics once, for the ONNX export:
+
 ```bash
-pip install -r requirements.txt
-pip install -U huggingface_hub
+pip install -U huggingface_hub ultralytics
 hf download AlexRHaigh/Hockey-Vision --include "*.pt" --local-dir CV_Models/Models
+python rust/export_onnx.py                          # -> CV_Models/Models/onnx/*.onnx
+
+cd rust
+cargo build --release --features coreml             # on a Mac; leave out --features coreml elsewhere
+cargo test --release
 ```
+
+The first build downloads ONNX Runtime (via the `ort` crate).
 
 ## Running
 
-1. `run_models.py <video>` runs the detection models and writes `outputs/<clip>/detections.json`.
-2. `homography.py outputs/<clip>/detections.json <video>` maps players and the puck onto the rink
-   (`positions.json`, `positions.csv`, `homographies.csv`).
-3. `export_data.py outputs/<clip>` writes the tables, events and `game_report.json` to
-   `outputs/<clip>/export/` (several clips: `export_data.py outputs`, written to `outputs/export/`).
+From the repo root:
 
-`run_models.py --width <px>` (e.g. 640, 960, 1280) resizes the frames before the models see them,
-to test how they do on lower-resolution video; the default is the video's own resolution.
-Detections are still written in the source video's pixels, so the later steps run unchanged.
+```bash
+B=rust/target/release/hockey-vision
+$B run videos/<clip>.mp4 --teams SJS MTL --device coreml --time   # the whole pipeline
+$B detect videos/<clip>.mp4 --teams SJS MTL                         # -> outputs/<clip>/detections.json
+$B homography outputs/<clip>/detections.json --frame-size 1920x1080 # -> positions.json/.csv, homographies.csv
+$B export outputs/<clip>                                            # -> outputs/<clip>/export/
+$B export outputs                                                   # several clips -> outputs/export/
+```
 
-`run_models.py --rink-stride 2` runs the rink and dots models only on every other frame (and on
-every camera cut), and `homography.py` holds the rink fit in between. This makes `run_models.py`
-about 12% faster on a Mac. Players, the puck and jersey numbers stay the same; player rink
-positions move by about 0.3-0.5 ft (median). `run_models.py` records camera cuts in
-`detections.json`, so `homography.py` only decodes the video when it writes videos.
+`detect` and `run` take `--models`, `--conf`, `--puck-conf` (default 0.6), `--teams`, `--roster`,
+`--jersey-stride` (default 5), `--rink-stride`, `--max-frames`, `--output`, `--weights NAME=PATH`,
+`--device cpu|coreml`, `--threads N`, `--models-dir`, `--sequential` and `--time`.
+[rust/README.md](rust/README.md#run) describes them.
 
-`jetson/run_clip.sh <video> [--teams SJS MTL]` runs all three. Only data is written by default.
-Annotated videos are optional outputs, for checking the models by eye:
-`run_models.py --save-video` writes `combined.mp4` (`--per-model` adds one video per model), and
-`homography.py --save-video` writes `side_by_side.mp4` with the top-down rink beside the video
-(`--debug` adds `radar.mp4` and `overlay.mp4`).
+`--rink-stride 2` runs the rink and dots models only on every other frame (and on every camera
+cut), and the rink fit is held in between. `detect` records camera cuts in `detections.json`, so
+`homography` never decodes the video.
 
 ## Output
 
@@ -95,10 +113,16 @@ Annotated videos are optional outputs, for checking the models by eye:
 | `events.csv` | One row per event: `type` (`shot`, `pass`, `turnover`, `defensive_play`), `subtype`, time, who did it, who to/from, rink position, zone; type-specific fields in `details` (JSON) |
 | `player_stats.csv` | One row per player: time detected, distance skated, possessions, shots, passes (good ones too), takeaways, interceptions, turnovers, defensive plays |
 | `possessions.csv` | One row per spell of a player carrying the puck, and how it ended |
-| `players.csv`, `puck.csv`, `frames.csv`, `tracks.csv` | Per-frame positions and per-track summaries ([jetson/README.md](jetson/README.md#exported-tables)) |
+| `players.csv` | One row per player detection per frame: `track_id`, `team` (A/B), `role` (skater/goalie/referee), `jersey_number`, image box, and rink `x_ft, y_ft` (empty on frames without a usable fit) |
+| `puck.csv` | One row per frame with a puck: image box and rink `x_ft, y_ft` |
+| `frames.csv` | One row per frame: `rink_fit`, `rejected`, `keypoints_used`, player and puck counts, `camera_cut`, `view` |
+| `tracks.csv` | One row per player track: team, role, jersey number, first/last frame, frames seen, mean position, `distance_ft`, `mean_speed_ft_s` |
 | `metadata.json` | Source files, frame rate, coordinate system and a description of every column |
 
-The events (`events.py` has the exact rules and thresholds):
+Every table has a `clip` column, so several clips can be exported together. Each row of
+`homographies.csv` is the 3x3 matrix (`h00`..`h22`) mapping a video pixel `(u, v)` to rink feet.
+
+The events (`rust/crates/hv-core/src/events.rs` has the exact rules and thresholds):
 
 - **Shots**: the puck leaves a player's stick at shot speed on a line at the other team's net, or
   the other team's goalie gets it straight after a release near the net. Outcomes: `saved`,
@@ -120,7 +144,7 @@ number is read, so treat the counts as estimates.
 `webapp/` is a web app on top of the exported data: every NHL team's players, a 0-100 score for
 each player in each analysed game, favourites, playlists, and hockey pools with trade calls and an
 assessment of whether to trade at all. It uses only the Python standard library (SQLite and
-`http.server`), so it runs wherever the pipeline does.
+`http.server`), so any Python 3.9+ runs it.
 
 ```bash
 python -m webapp.server                       # http://127.0.0.1:8000 (--host 0.0.0.0 to share it)
@@ -188,25 +212,24 @@ reach the server shares the favourites and playlists.
 
 | Path | Contents |
 |---|---|
-| `run_models.py` | Runs the detection models, tracks players and reads jersey numbers |
-| `homography.py`, `rink.py` | Maps detections onto the rink; rink geometry and the template drawing |
-| `export_data.py`, `events.py` | Turns a clip's outputs into tables, play events and `game_report.json` |
-| `fetch_roster.py`, `roster.py`, `rosters/` | NHL rosters for `--teams` / `--roster` |
+| `rust/crates/hv-core/` | The pipeline without the models: tracking, jersey numbers, rosters, rink fit, export and events |
+| `rust/crates/hv-infer/` | The models through ONNX Runtime, the ffmpeg frame reader, the detect loop |
+| `rust/crates/hv-cli/` | The `hockey-vision` binary |
+| `rust/export_onnx.py` | Exports the five models to `CV_Models/Models/onnx/` |
+| `rust/bench/` | Scripts that compare two runs' outputs and make synthetic test clips |
+| `rust/ANALYSIS.md` | The analysis behind moving the pipeline to Rust |
+| `fetch_roster.py`, `rosters/` | NHL rosters for `--teams` / `--roster` |
 | `webapp/` | The web app: server, scores and trade calls, importing exports, NHL API data (`nhl.py`), the page in `static/` |
-| `export_engines.py`, `jetson/` | TensorRT engines and the Docker setup for the Jetson |
-| `video_io.py` | Background-thread video decoding (hardware decoder when available), camera-cut detection, background output writing |
 | `CV_Models/` | The models (see [CV_Models/README.md](CV_Models/README.md)) |
-| `assets/` | The rink template image (for the optional videos) |
-| `tests/` | Tests |
-| `rust/` | The whole pipeline in Rust (`hockey-vision run`, ~5x faster on a Mac) and the analysis behind it: [rust/README.md](rust/README.md), [rust/ANALYSIS.md](rust/ANALYSIS.md) |
+| `tests/` | The web app's tests (`python -m unittest discover -s tests`); the pipeline's are in `cargo test` |
 
 ## Jersey numbers
 
-`run_models.py` reads jersey numbers with the YOLO number model, `CV_Models/Models/new_nums.pt` (YOLO26n,
-classes `0`-`9`). It detects single digits on each player's box and joins them into the number;
-digits outside the torso band (stripes on socks, sticks, the boards) are ignored. Each player
-track's readings are combined in a vote, so a number stays with the player through frames where
-it can't be read and one-off misreads are outvoted. Referees aren't read.
+`detect` reads jersey numbers with the YOLO number model, `new_nums` (YOLO26n, classes `0`-`9`).
+It detects single digits on each player's box and joins them into the number; digits outside the
+torso band (stripes on socks, sticks, the boards) are ignored. Each player track's readings are
+combined in a vote, so a number stays with the player through frames where it can't be read and
+one-off misreads are outvoted. Referees aren't read.
 
 ### Rosters and player names
 
@@ -216,13 +239,12 @@ get no number:
 
 ```bash
 python fetch_roster.py                                   # all 32 teams' active rosters -> rosters/nhl_active_players.csv
-python run_models.py videos/<clip>.mp4 --teams SJS MTL   # team_a = SJS, team_b = MTL
+$B run videos/<clip>.mp4 --teams SJS MTL                 # team_a = SJS, team_b = MTL
 python fetch_roster.py --game 2025020969                 # a past game: exactly who dressed
-python run_models.py videos/<clip>.mp4 --teams SJS MTL --roster rosters/2026-03-03_MTL_at_SJS.csv
+$B run videos/<clip>.mp4 --teams SJS MTL --roster rosters/2026-03-03_MTL_at_SJS.csv
 ```
 
 A reading that isn't a number that team wears is then dropped. `detections.json`, `positions.csv`
-and the exported `players.csv` / `tracks.csv` gain `team_abbrev` / `player_name`. The roster CSV has one row per player:
-`team, team_name, number, player, position, player_id, as_of`; refetch it as rosters change.
-
-`detections.json` lists the digit boxes in `number`.
+and the exported `players.csv` / `tracks.csv` gain `team_abbrev` / `player_name`. The roster CSV has
+one row per player: `team, team_name, number, player, position, player_id, as_of`; refetch it as
+rosters change. `fetch_roster.py` uses only the Python standard library.
