@@ -18,6 +18,16 @@ measurements.
 > the Rust pipeline doesn't do: images, `--width`, the annotated videos, training, and the Jetson /
 > TensorRT setup.
 
+## Recent changes
+
+- **Rust pipeline**: detection, rink mapping and export are rewritten in Rust as one program,
+  about 5x faster and with the same results as the Python version.
+- **Python version moved**: the original Python pipeline now lives on its own branch, and main is
+  the Rust pipeline.
+- **Web app**: player scores from the video and the NHL's box scores, favourites, playlists, and
+  hockey pools with trade advice, using live NHL data.
+- **Better play detection**: fixes to how passes are counted.
+
 ## Design
 
 ```
