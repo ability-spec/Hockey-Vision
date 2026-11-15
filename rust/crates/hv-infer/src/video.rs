@@ -5,8 +5,8 @@
 //! found on the same thread (video_io.CutDetector), so each frame comes with its cut flag.
 
 use std::io::Read;
-use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{sync_channel, Receiver};
 use std::thread::JoinHandle;
 
@@ -65,7 +65,11 @@ pub struct FrameReader {
     pub exact: bool,
     rx: Receiver<Result<(Image, bool), String>>,
     child: Child,
+    path: PathBuf,
     thread: Option<JoinHandle<()>>,
+    reader_error: Option<String>,
+    finished: bool,
+    child_waited: bool,
 }
 
 impl FrameReader {
@@ -113,8 +117,58 @@ impl FrameReader {
                 }
             }
         });
-        Ok(FrameReader { info, exact, rx, child, thread: Some(thread) })
+        Ok(FrameReader {
+            info,
+            exact,
+            rx,
+            child,
+            path: path.to_path_buf(),
+            thread: Some(thread),
+            reader_error: None,
+            finished: false,
+            child_waited: false,
+        })
     }
+
+    /// Called after the reader thread closes its channel, which means FFmpeg closed stdout.
+    /// Waiting here makes an unsuccessful FFmpeg exit visible instead of treating it as EOF.
+    fn finish(&mut self) -> Option<<Self as Iterator>::Item> {
+        self.finished = true;
+
+        let reader_panicked = self.thread.take().is_some_and(|thread| thread.join().is_err());
+        let status = match self.child.wait() {
+            Ok(status) => {
+                self.child_waited = true;
+                status
+            }
+            Err(error) => {
+                return Some(Err(format!("waiting for ffmpeg while decoding {}: {error}", self.path.display())));
+            }
+        };
+
+        if let Some(error) = ffmpeg_exit_error(&self.path, &status, self.reader_error.as_deref()) {
+            return Some(Err(error));
+        }
+        if let Some(error) = self.reader_error.take() {
+            return Some(Err(format!("frame reader failed while decoding {}: {error}", self.path.display())));
+        }
+        if reader_panicked {
+            return Some(Err(format!("frame reader thread panicked while decoding {}", self.path.display())));
+        }
+        None
+    }
+}
+
+fn ffmpeg_exit_error(path: &Path, status: &ExitStatus, reader_error: Option<&str>) -> Option<String> {
+    if status.success() {
+        return None;
+    }
+
+    let mut message = format!("ffmpeg exited with {status} while decoding {}", path.display());
+    if let Some(error) = reader_error {
+        message.push_str(&format!("; frame reader also reported: {error}"));
+    }
+    Some(message)
 }
 
 /// Fill `buf`; false at a clean end of stream.
@@ -134,19 +188,82 @@ impl Iterator for FrameReader {
     /// A frame and whether it starts a new camera shot.
     type Item = Result<(Image, bool), String>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.rx.recv().ok()
+        if self.finished {
+            return None;
+        }
+
+        loop {
+            match self.rx.recv() {
+                Ok(Ok(frame)) => return Some(Ok(frame)),
+                // Defer reader errors until FFmpeg's exit status is known, so both can be
+                // reported together when FFmpeg failed after emitting a partial stream.
+                Ok(Err(error)) => self.reader_error = Some(error),
+                Err(_) => return self.finish(),
+            }
+        }
     }
 }
 
 impl Drop for FrameReader {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if !self.child_waited {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
         // Unblock the thread if it is waiting to send.
         while self.rx.try_recv().is_ok() {}
         if let Some(t) = self.thread.take() {
             drop(std::mem::replace(&mut self.rx, sync_channel(1).1));
             let _ = t.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ffmpeg_exit_error;
+    use std::path::Path;
+    use std::process::ExitStatus;
+
+    #[cfg(unix)]
+    fn failed_status() -> ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        ExitStatus::from_raw(7 << 8)
+    }
+
+    #[cfg(windows)]
+    fn failed_status() -> ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+        ExitStatus::from_raw(7)
+    }
+
+    #[cfg(unix)]
+    fn successful_status() -> ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        ExitStatus::from_raw(0)
+    }
+
+    #[cfg(windows)]
+    fn successful_status() -> ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+        ExitStatus::from_raw(0)
+    }
+
+    #[test]
+    fn successful_ffmpeg_exit_is_clean_eof() {
+        assert!(ffmpeg_exit_error(Path::new("clip.mp4"), &successful_status(), None).is_none());
+    }
+
+    #[test]
+    fn nonzero_ffmpeg_exit_is_reported_with_the_video_path() {
+        let error = ffmpeg_exit_error(Path::new("clip.mp4"), &failed_status(), None).unwrap();
+        assert!(error.contains("ffmpeg exited with"));
+        assert!(error.contains("clip.mp4"));
+    }
+
+    #[test]
+    fn ffmpeg_exit_error_includes_a_reader_error_when_available() {
+        let error = ffmpeg_exit_error(Path::new("clip.mp4"), &failed_status(), Some("truncated frame")).unwrap();
+        assert!(error.contains("truncated frame"));
     }
 }
